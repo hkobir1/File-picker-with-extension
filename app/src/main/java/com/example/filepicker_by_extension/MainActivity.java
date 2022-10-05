@@ -10,12 +10,18 @@ import androidx.core.content.ContextCompat;
 
 import android.Manifest;
 import android.app.Activity;
+import android.content.ContentUris;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.database.Cursor;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.provider.DocumentsContract;
+import android.provider.MediaStore;
+import android.provider.OpenableColumns;
 import android.provider.Settings;
 import android.util.Log;
 import android.widget.Toast;
@@ -24,6 +30,9 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -32,19 +41,27 @@ import me.rosuh.filepicker.config.FilePickerManager;
 public class MainActivity extends AppCompatActivity {
     private AppCompatTextView viewText;
     private StringBuilder resultText;
-    public static final int REQUEST_ID_MULTIPLE_PERMISSIONS = 2001;
+    public static final int REQUEST_ID_MULTIPLE_PERMISSIONS = 2001, PICK_SYSTEM_FILE = 2365;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         viewText = findViewById(R.id.viewTV);
-        resultText = new StringBuilder();
         findViewById(R.id.pickBtn).setOnClickListener(v -> {
             if (isPermissionGranted())
                 pickFile();
             else
                 checkUserPermission();
+
+        });
+        findViewById(R.id.pickSystemBtn).setOnClickListener(v -> {
+            Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+            intent.putExtra("android.provider.extra.INITIAL_URI",
+                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS));
+            intent.setType("*/*");
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            startActivityForResult(intent, PICK_SYSTEM_FILE);
 
         });
     }
@@ -74,36 +91,63 @@ public class MainActivity extends AppCompatActivity {
             case FilePickerManager.REQUEST_CODE:
                 if (resultCode == Activity.RESULT_OK) {
                     List<String> list = FilePickerManager.obtainData();
-                    resultText.append("path: " + list.get(0));
-                    resultText.append("\n");
-                    Log.d("MainFilePick", "onActivityResult: " + list.get(0));
-
-                    // do your work
-                    resultText.append("--------------\n");
-                    File file = new File(list.get(0));
-                    try {
-                        BufferedReader br = new BufferedReader(new FileReader(file));
-                        String line;
-
-                        while ((line = br.readLine()) != null) {
-                            resultText.append(line);
-                            resultText.append('\n');
-                        }
-                        br.close();
-                    } catch (IOException e) {
-                        //You'll need to add proper error handling here
-                        Log.e("MainFilePick", "Error: " + e.getLocalizedMessage());
-
-                    }
-                    //Set the text
-                    viewText.setText(resultText.toString());
-
-
+                    showFileData(list.get(0));
                 } else {
                     Toast.makeText(MainActivity.this, "You didn't choose anything~", Toast.LENGTH_SHORT).show();
                 }
                 break;
+            case PICK_SYSTEM_FILE:
+                if (resultCode == Activity.RESULT_OK) {
+                    Uri uri = data.getData();
+
+                    try {
+                        String extension = uri.toString().substring(uri.toString().lastIndexOf(".") + 1);
+                        if (uri != null && (extension.equals("json")||extension.equals("ovpn")))
+                            showFileData(uri);
+                        else {
+                            Log.e("MainFilePick", "onFilePath: " + uri);
+                            Toast.makeText(MainActivity.this, "Wrong file type with extension!", Toast.LENGTH_SHORT).show();
+                        }
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }
+                break;
         }
+    }
+
+
+    public void showFileData(Object filePath) {
+        resultText = new StringBuilder();
+        resultText.append("path: " + filePath);
+        resultText.append("\n");
+        Log.d("MainFilePick", "onActivityResult: " + filePath);
+
+        // do your work
+        resultText.append("--------------\n");
+        try {
+            BufferedReader br = null;
+            if (filePath instanceof String) {
+                File file = new File((String) filePath);
+                br = new BufferedReader(new FileReader(file));
+            } else if (filePath instanceof Uri) {
+                InputStream in = getContentResolver().openInputStream((Uri) filePath);
+                br = new BufferedReader(new InputStreamReader(in));
+            }
+            String line;
+
+            while ((line = br.readLine()) != null) {
+                resultText.append(line);
+                resultText.append('\n');
+            }
+            br.close();
+        } catch (IOException e) {
+            //You'll need to add proper error handling here
+            Log.e("MainFilePick", "Error: " + e.getLocalizedMessage());
+
+        }
+        //Set the text
+        viewText.setText(resultText.toString());
     }
 
     private void checkUserPermission() {
