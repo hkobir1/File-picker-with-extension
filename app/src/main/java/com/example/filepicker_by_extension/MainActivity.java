@@ -6,10 +6,12 @@ import android.Manifest;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.database.Cursor;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.provider.OpenableColumns;
 import android.provider.Settings;
 import android.util.Log;
 import android.widget.Toast;
@@ -94,8 +96,9 @@ public class MainActivity extends AppCompatActivity {
                     Uri uri = data.getData();
 
                     try {
-                        String extension = uri.toString().substring(uri.toString().lastIndexOf(".") + 1);
-                        if (uri != null && (extension.equals("json")||extension.equals("ovpn")))
+                        String fileName = getFileName(uri);
+                        String extension = fileName.split("[.]")[1];
+                        if (uri != null && (extension.equals("json") || extension.equals("ovpn")|| extension.equals("conf")))
                             showFileData(uri);
                         else {
                             Log.e("MainFilePick", "onFilePath: " + uri);
@@ -109,6 +112,27 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    public String getFileName(Uri uri) {
+        String result = null;
+        if (uri.getScheme().equals("content")) {
+            Cursor cursor = getContentResolver().query(uri, null, null, null, null);
+            try {
+                if (cursor != null && cursor.moveToFirst()) {
+                    result = cursor.getString(cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME));
+                }
+            } finally {
+                cursor.close();
+            }
+        }
+        if (result == null) {
+            result = uri.getPath();
+            int cut = result.lastIndexOf('/');
+            if (cut != -1) {
+                result = result.substring(cut + 1);
+            }
+        }
+        return result;
+    }
 
     public void showFileData(Object filePath) {
         resultText = new StringBuilder();
